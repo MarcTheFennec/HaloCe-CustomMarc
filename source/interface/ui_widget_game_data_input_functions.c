@@ -342,6 +342,10 @@ symbols in this file:
 #include "interface/ui_widget_game_data_input_functions.h"
 #include "interface/hud_messaging.h"
 #include "interface/player_ui.h"
+#ifdef HALO_LINUX
+/* the custom map loader in the menus' level lists (port/linux/game/custom_maps.c) */
+#include "interface/custom_maps.h"
+#endif
 #include "game/game_engine.h"
 #include "game/players.h"
 #include "main/main.h"
@@ -651,6 +655,10 @@ static long filter_invalid_list_indices(
 /* ---------- globals */
 
 extern struct persistent_game_data_info_view persistant_game_data_info;
+#ifdef HALO_LINUX
+extern struct custom_map_sp_level_entry custom_map_sp_level_data[
+	CUSTOM_MAP_STOCK_SINGLE_PLAYER_LEVELS + CUSTOM_MAP_MAXIMUM_COUNT];
+#endif
 extern struct single_player_level_entry single_player_level_data[10];
 extern struct cached_player_profile_entry cached_player_profile[3];
 extern struct cached_variant_profile_entry cached_variant_profile[3];
@@ -4060,12 +4068,43 @@ void solo_level_select_list_update_displayed_items(
 		difficulty_marker->animation.current_frame_index = 2;
 		cooperative_marker->animation.current_frame_index = 3;
 
+#ifdef HALO_LINUX
+		match_vassert(
+			"c:\\halo\\SOURCE\\interface\\ui_widget_game_data_input_functions.c",
+			0x204,
+			displayed_item_indices[item_index] >= 0 &&
+				displayed_item_indices[item_index] <
+					list_widget->parameters.list.number_of_items,
+			"(displayed_item_index[i]>=0) && (displayed_item_index[i]<NUMBER_OF_SINGLE_PLAYER_LEVELS)");
+		if (displayed_item_indices[item_index] >= CUSTOM_MAP_STOCK_SINGLE_PLAYER_LEVELS)
+		{
+			/* a custom map of the maps folder: custom string list entries, the
+			   blank bitmap frame, no unlock markers */
+			short custom_offset = (short)(displayed_item_indices[item_index] -
+				CUSTOM_MAP_STOCK_SINGLE_PLAYER_LEVELS);
+
+			map_name->parameters.text_box.string_list_index = custom_map_string_index(
+				custom_map_definition_string_list_tag(
+					ui_widget_definition_get(map_name->definition_tag_index)),
+				custom_offset);
+			map_description->parameters.text_box.string_list_index = custom_map_string_index(
+				custom_map_definition_string_list_tag(
+					ui_widget_definition_get(map_description->definition_tag_index)),
+				custom_offset);
+			map_bitmap->animation.current_frame_index = 10;
+			completion_marker->visible = FALSE;
+			difficulty_marker->visible = FALSE;
+			cooperative_marker->visible = FALSE;
+			continue;
+		}
+#else
 		match_vassert(
 			"c:\\halo\\SOURCE\\interface\\ui_widget_game_data_input_functions.c",
 			0x204,
 			displayed_item_indices[item_index] >= 0 &&
 				displayed_item_indices[item_index] < 10,
 			"(displayed_item_index[i]>=0) && (displayed_item_index[i]<NUMBER_OF_SINGLE_PLAYER_LEVELS)");
+#endif
 
 		if (!single_player_level_data[displayed_item_indices[item_index]].available &&
 			!single_player_level_data[displayed_item_indices[item_index]].completion_marker &&
@@ -4234,6 +4273,27 @@ void mp_level_select_list_update_displayed_items(
 				_ui_widget_type_text_box,
 			"expected a text box widget for the list item's third child (map description)");
 
+#ifdef HALO_LINUX
+		if (displayed_item_indices[item_index] >= CUSTOM_MAP_STOCK_MULTIPLAYER_LEVELS)
+		{
+			/* a custom map of the maps folder: custom string list entries and
+			   no map bitmap */
+			short custom_offset = (short)(displayed_item_indices[item_index] -
+				CUSTOM_MAP_STOCK_MULTIPLAYER_LEVELS);
+
+			map_name->parameters.text_box.string_list_index = custom_map_string_index(
+				custom_map_definition_string_list_tag(
+					ui_widget_definition_get(map_name->definition_tag_index)),
+				custom_offset);
+			map_description->parameters.text_box.string_list_index = custom_map_string_index(
+				custom_map_definition_string_list_tag(
+					ui_widget_definition_get(map_description->definition_tag_index)),
+				custom_offset);
+			map_bitmap->visible = FALSE;
+			continue;
+		}
+		map_bitmap->visible = TRUE;
+#endif
 		map_name->parameters.text_box.string_list_index =
 			(short)displayed_item_indices[item_index];
 		map_bitmap->animation.current_frame_index =

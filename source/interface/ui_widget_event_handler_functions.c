@@ -913,6 +913,10 @@ symbols in this file:
 #include "interface/player_ui.h"
 #include "saved games/player_profile.h"
 #include "interface/ui_widget_definitions.h"
+#ifdef HALO_LINUX
+/* the custom map loader in the menus' level lists (port/linux/game/custom_maps.c) */
+#include "interface/custom_maps.h"
+#endif
 
 /* ---------- constants */
 
@@ -1607,6 +1611,13 @@ boolean widget_event_function_list_widget_goto_previous_item(
 extern short player_spawn_count;
 static wchar_t new_campaign_profile_name[12] = { 0 };
 byte single_player_level_data[0x50] = { 0 };
+#ifdef HALO_LINUX
+/* the single-player level list past the retail ten: the entries of
+single_player_level_data followed by the custom maps of the maps folder
+(interface/custom_maps.h) */
+struct custom_map_sp_level_entry custom_map_sp_level_data[
+	CUSTOM_MAP_STOCK_SINGLE_PLAYER_LEVELS + CUSTOM_MAP_MAXIMUM_COUNT] = { 0 };
+#endif
 struct persistent_game_difficulty
 {
 	short value;
@@ -3128,6 +3139,41 @@ static boolean multiplayer_level_list_initialize(
 	match_vassert("c:\\halo\\SOURCE\\interface\\ui_widget_event_handler_functions.c", 1229,
 		definition->child_count == 3,
 		"expected 3 list items for 'multiplayer level list' widget");
+#ifdef HALO_LINUX
+	{
+		static char *multiplayer_levels_combined[
+			CUSTOM_MAP_STOCK_MULTIPLAYER_LEVELS + CUSTOM_MAP_MAXIMUM_COUNT] = { 0 };
+		long map_count;
+		long level_index;
+
+		custom_map_scan();
+		map_count = custom_map_count();
+		for (level_index = 0; level_index < CUSTOM_MAP_STOCK_MULTIPLAYER_LEVELS; level_index++)
+		{
+			multiplayer_levels_combined[level_index] =
+				event_handler_functions.multiplayer_levels[level_index];
+		}
+		for (level_index = 0; level_index < map_count; level_index++)
+		{
+			multiplayer_levels_combined[CUSTOM_MAP_STOCK_MULTIPLAYER_LEVELS + level_index] =
+				(char *)custom_map_names()[level_index];
+		}
+		level_count = CUSTOM_MAP_STOCK_MULTIPLAYER_LEVELS + map_count;
+		widget->generated_list = multiplayer_levels_combined;
+		widget->generated_count = level_count;
+	}
+	if (saved_game_file_retrieve_last_used_multiplayer_map(map_name))
+	{
+		widget->data3C.selected_index = 0;
+		while (widget->data3C.selected_index < level_count &&
+			_stricmp(map_name, ((char **)widget->generated_list)[widget->data3C.selected_index]))
+		{
+			widget->data3C.selected_index++;
+		}
+		if (widget->data3C.selected_index == level_count)
+			widget->data3C.selected_index = 0;
+	}
+#else
 	widget->generated_list = event_handler_functions.multiplayer_levels;
 	widget->generated_count = level_count;
 	if (saved_game_file_retrieve_last_used_multiplayer_map(map_name))
@@ -3142,6 +3188,7 @@ static boolean multiplayer_level_list_initialize(
 		if (widget->data3C.selected_index == level_count)
 			widget->data3C.selected_index = 0;
 	}
+#endif
 	return TRUE;
 }
 
@@ -4230,9 +4277,44 @@ static boolean solo_level_initialize_list_coop(
 	definition = ui_widget_definition_get(widget->definition_tag_index);
 	match_vassert("c:\\halo\\SOURCE\\interface\\ui_widget_event_handler_functions.c", 689, definition->type == 2, "expected a spinner list widget for 'solo level list' widget");
 	match_vassert("c:\\halo\\SOURCE\\interface\\ui_widget_event_handler_functions.c", 690, definition->child_count == 3, "expected 3 list items for 'solo level list' widget");
+#ifdef HALO_LINUX
+	{
+		long map_count;
+		long stock_index;
+
+		custom_map_scan();
+		map_count = custom_map_count();
+		for (stock_index = 0; stock_index < CUSTOM_MAP_STOCK_SINGLE_PLAYER_LEVELS; stock_index++)
+		{
+			struct single_player_level_entry *stock_entry =
+				&((struct single_player_level_entry *)single_player_level_data)[stock_index];
+
+			custom_map_sp_level_data[stock_index].map_name = stock_entry->map_name;
+			custom_map_sp_level_data[stock_index].available = stock_entry->available;
+			custom_map_sp_level_data[stock_index].unknown5 = stock_entry->unknown5;
+			custom_map_sp_level_data[stock_index].unknown6 = stock_entry->unknown6;
+			custom_map_sp_level_data[stock_index].unknown7 = stock_entry->unknown7;
+		}
+		for (stock_index = 0; stock_index < map_count; stock_index++)
+		{
+			struct custom_map_sp_level_entry *custom_entry =
+				&custom_map_sp_level_data[CUSTOM_MAP_STOCK_SINGLE_PLAYER_LEVELS + stock_index];
+
+			custom_entry->map_name = (char *)custom_map_names()[stock_index];
+			custom_entry->available = TRUE;
+			custom_entry->unknown5 = FALSE;
+			custom_entry->unknown6 = FALSE;
+			custom_entry->unknown7 = FALSE;
+		}
+		widget->generated_list = custom_map_sp_level_data;
+		widget->generated_count = CUSTOM_MAP_STOCK_SINGLE_PLAYER_LEVELS + map_count;
+	}
+	widget->data3C.selected_index = PIN(player_ui_get_last_single_player_level_played(0), 0, 9);
+#else
 	widget->generated_list = single_player_level_data;
 	widget->generated_count = 10;
 	widget->data3C.selected_index = PIN(player_ui_get_last_single_player_level_played(0), 0, 9);
+#endif
 	return TRUE;
 }
 
@@ -4333,7 +4415,20 @@ static boolean solo_level_set_next_map_name(
 
 	list_widget = widget;
 	result = FALSE;
+#ifdef HALO_LINUX
+	match_vassert("c:\\halo\\SOURCE\\interface\\ui_widget_event_handler_functions.c", 724, list_widget->data3C.selected_index >= 0 && list_widget->data3C.selected_index < (unsigned short)list_widget->generated_count, "I don't think this is the solo level list widget");
+	/* past the retail ten sits a custom map of the maps folder: always available */
+	if (list_widget->data3C.selected_index >= CUSTOM_MAP_STOCK_SINGLE_PLAYER_LEVELS)
+	{
+		if (player_spawn_count == 1)
+			player_ui_remember_player1_profile(0);
+		main_set_map_name(custom_map_sp_level_data[list_widget->data3C.selected_index].map_name);
+		main_defer_map_map_change();
+		return TRUE;
+	}
+#else
 	match_vassert("c:\\halo\\SOURCE\\interface\\ui_widget_event_handler_functions.c", 724, list_widget->data3C.selected_index >= 0 && list_widget->data3C.selected_index < 10, "I don't think this is the solo level list widget");
+#endif
 	switch (player_spawn_count)
 	{
 	case 1:
@@ -4364,7 +4459,11 @@ static boolean solo_level_set_next_map_name(
 	}
 	if (result == TRUE)
 	{
+#ifdef HALO_LINUX
+		main_set_map_name(custom_map_sp_level_data[list_widget->data3C.selected_index].map_name);
+#else
 		main_set_map_name((&event_handler_functions.map_name)[list_widget->data3C.selected_index]);
+#endif
 		main_defer_map_map_change();
 	}
 	else
@@ -5710,10 +5809,18 @@ static boolean multiplayer_level_select(
 		definition->child_count == 3,
 		"expected 3 list items for 'multiplayer level list' widget");
 	level_list = widget->child->child;
+#ifdef HALO_LINUX
+	match_vassert("c:\\halo\\SOURCE\\interface\\ui_widget_event_handler_functions.c", 1298,
+		level_list->data3C.selected_index >= 0 &&
+		level_list->data3C.selected_index < (unsigned short)level_list->generated_count,
+		"invalid multiplayer level specified from 'multiplayer level list' list widget");
+	map_name = ((char **)level_list->generated_list)[level_list->data3C.selected_index];
+#else
 	match_vassert("c:\\halo\\SOURCE\\interface\\ui_widget_event_handler_functions.c", 1298,
 		level_list->data3C.selected_index >= 0 && level_list->data3C.selected_index < 13,
 		"invalid multiplayer level specified from 'multiplayer level list' list widget");
 	map_name = event_handler_functions.multiplayer_levels[level_list->data3C.selected_index];
+#endif
 	file = fopen("d:\\map_automation.txt", "r");
 	if (file)
 	{
@@ -5730,6 +5837,16 @@ static boolean multiplayer_level_select(
 		if (server)
 			network_game_server_change_map_name(server, map_name);
 	}
+#ifdef HALO_LINUX
+	for (level_index = 0; level_index < level_list->generated_count; level_index++)
+	{
+		if (!_stricmp(map_name, ((char **)level_list->generated_list)[level_index]))
+		{
+			saved_game_file_remember_last_used_multiplayer_map(((char **)level_list->generated_list)[level_index]);
+			break;
+		}
+	}
+#else
 	for (level_index = 0; level_index < 13; level_index++)
 	{
 		if (!_stricmp(map_name, event_handler_functions.multiplayer_levels[level_index]))
@@ -5738,6 +5855,7 @@ static boolean multiplayer_level_select(
 			break;
 		}
 	}
+#endif
 	return TRUE;
 }
 
@@ -5891,9 +6009,44 @@ static boolean solo_level_initialize_list_single_player(
 	match_vassert("c:\\halo\\SOURCE\\interface\\ui_widget_event_handler_functions.c", 604,
 		definition->child_count == 3,
 		"expected 3 list items for 'solo level list' widget");
+#ifdef HALO_LINUX
+	{
+		long map_count;
+		long stock_index;
+
+		custom_map_scan();
+		map_count = custom_map_count();
+		for (stock_index = 0; stock_index < CUSTOM_MAP_STOCK_SINGLE_PLAYER_LEVELS; stock_index++)
+		{
+			struct single_player_level_entry *stock_entry =
+				&((struct single_player_level_entry *)single_player_level_data)[stock_index];
+
+			custom_map_sp_level_data[stock_index].map_name = stock_entry->map_name;
+			custom_map_sp_level_data[stock_index].available = stock_entry->available;
+			custom_map_sp_level_data[stock_index].unknown5 = stock_entry->unknown5;
+			custom_map_sp_level_data[stock_index].unknown6 = stock_entry->unknown6;
+			custom_map_sp_level_data[stock_index].unknown7 = stock_entry->unknown7;
+		}
+		for (stock_index = 0; stock_index < map_count; stock_index++)
+		{
+			struct custom_map_sp_level_entry *custom_entry =
+				&custom_map_sp_level_data[CUSTOM_MAP_STOCK_SINGLE_PLAYER_LEVELS + stock_index];
+
+			custom_entry->map_name = (char *)custom_map_names()[stock_index];
+			custom_entry->available = TRUE;
+			custom_entry->unknown5 = FALSE;
+			custom_entry->unknown6 = FALSE;
+			custom_entry->unknown7 = FALSE;
+		}
+		widget->generated_list = custom_map_sp_level_data;
+		widget->generated_count = CUSTOM_MAP_STOCK_SINGLE_PLAYER_LEVELS + map_count;
+	}
+	widget->data3C.selected_index = PIN(player_ui_get_last_single_player_level_played(0), 0, 9);
+#else
 	widget->generated_list = single_player_level_data;
 	widget->generated_count = 10;
 	widget->data3C.selected_index = PIN(player_ui_get_last_single_player_level_played(0), 0, 9);
+#endif
 
 	if (persistant_game_data_info.valid == TRUE)
 	{

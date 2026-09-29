@@ -371,6 +371,26 @@ has a private party with the invite as its join secret. The host can send
 the invite with the invite button of Discord. When a person accepts it, that
 person joins the game. If the game does not operate, Discord starts it.
 
+## Custom maps
+
+Drop `.map` files into `maps/` (the maps folder of the data root). The
+multiplayer map select and the single-player mission select offer them
+after the retail maps:
+
+- A map's name in the menus is its file name without the extension: up to
+  39 letters, digits, `-` and `_`. The sort does not distinguish case.
+- The maps that the game itself uses are not offered: the campaign maps,
+  the retail multiplayer maps, and the `ui` and `mainmenu` tags.
+- A custom map has no map picture in the menus: the level list shows its
+  name only. The game setup screen of a network game shows the placeholder
+  entry for it.
+- A custom map starts like a retail one. On the mission select it needs no
+  completed level.
+
+`source/interface/custom_maps.h` and `port/linux/game/custom_maps.c`
+implement this in `#ifdef HALO_LINUX` together with changes in the two
+interface files of the "Game source changes" table below.
+
 ## What operates
 
 | Area | Status |
@@ -385,6 +405,7 @@ person joins the game. If the game does not operate, Discord starts it.
 | Saved games | The Xbox `UDATA` layout, with SHA-1 signatures. |
 | Networking | Winsock on BSD sockets. System link on a local network and on the internet. |
 | Bink video | Not available. The game skips the movies. |
+| Custom maps | The menus' level lists offer the `.map` files of the maps folder. See "Custom maps". |
 
 ## How the port operates
 
@@ -462,6 +483,7 @@ Other changes are in `#ifdef HALO_LINUX`. All the native ports define
 | `cseries/errors.c` | `debug.txt` stays open between lines. |
 | `networking/`, `game/`, `interface/`, `bungie_net/network/` and the pools of objects, effects and sounds | The system link limits and the memory for them. |
 | `game/`, `objects/`, `units/`, `networking/` | The distributed netcode. Refer to `NETCODE.md`. |
+| `interface/ui_widget_event_handler_functions.c`, `interface/ui_widget_game_data_input_functions.c` and `game/custom_maps.c` | The custom map loader of the "Custom maps" section. The two interface files build their level lists from the retail maps plus the maps folder, and display the names that `game/custom_maps.c` appends to the menus' string lists. |
 
 The x86 inline assembly of the game has C replacements in
 `#ifdef HALO_LINUX`. Thus the compiler can optimize that code for each

@@ -81,6 +81,12 @@ GUEST_ABI_FLAGS = [
     # which only reaches the lowest 2 GB, and the image lives above it;
     # RIP-relative addressing works at any address
     "-fpie",
+    # ...but with direct (RIP-relative) access to every variable, as the
+    # image is static: x32 PIE code otherwise loads the address of each extern
+    # variable from the GOT, and LLD's relaxation of those loads for anything
+    # but mov (cmp, add, test...) resolves to wrong addresses in an x32 static
+    # link, which left __guest_start's constructor loop reading .bss
+    "-fdirect-access-external-data",
     # no fused multiply-add (see tools/android_build.py)
     "-ffp-contract=off",
     "-O2",
@@ -442,7 +448,7 @@ def generate_ps4_build(n: Writer, sln: Any) -> None:
     linker_script = PORT_DIR / "guest" / "guest.ld"
     n.rule(
         name="ps4_guest_link",
-        command=(f"$ps4_guest_ld -m elf32_x86_64 -static -nostdlib -T {linker_script} "
+        command=(f"$ps4_guest_ld -m elf32_x86_64 -static -nostdlib --no-relax -T {linker_script} "
                  f"-Map $out.map -o $out @$out.rsp {libguestc} && "
                  f"{python} tools/ps4_image_check.py $out"),
         description="PS4 LINK $out",
@@ -452,3 +458,4 @@ def generate_ps4_build(n: Writer, sln: Any) -> None:
     n.build(outputs=image, rule="ps4_guest_link", inputs=objects,
             implicit=[libguestc, linker_script, Path("tools/ps4_image_check.py")])
     n.build(outputs="ps4_guest", rule="phony", inputs=[image, host_table_c, host_gl_c])
+

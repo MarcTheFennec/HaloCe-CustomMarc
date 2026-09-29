@@ -320,7 +320,7 @@ void terminal_printf(
 	...)
 {
 	real_argb_color default_terminal_printf_color;
-	char *arglist;
+	va_list arglist; /* char * in the original: the same type on the Xbox, i386 and Darwin, not on x32 (PS4) */
 
 	va_start(arglist, format);
 

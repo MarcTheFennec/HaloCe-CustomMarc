@@ -235,7 +235,8 @@ static struct
 
 static struct
 {
-	unsigned long blits_drawn, blits_copied, samplings_applied, shaders_translated, links, link_failures;
+	unsigned long blits_drawn, blits_copied, samplings_applied, shaders_translated, links, link_failures,
+		error_materials;
 	unsigned long cpu_levels, swapped_uploads, depth_renderbuffers, incomplete_samplings, npot_clamps;
 } statistics;
 
@@ -279,10 +280,11 @@ void es2_log_statistics(void)
 {
 	host_logf(HOST_LOG_INFO,
 		"gl: blits %lu drawn / %lu copied; %lu sampler applications (%lu without mipmaps: incomplete, %lu clamped: npot); "
-		"%lu shaders translated, %lu programs linked (%lu failed); %lu CPU mip levels, %lu byte-swapped uploads, "
-		"%lu depth renderbuffers",
+		"%lu shaders translated, %lu programs linked (%lu failed, %lu with the error material); %lu CPU mip levels, "
+		"%lu byte-swapped uploads, %lu depth renderbuffers",
 		statistics.blits_drawn, statistics.blits_copied, statistics.samplings_applied, statistics.incomplete_samplings,
 		statistics.npot_clamps, statistics.shaders_translated, statistics.links, statistics.link_failures,
+		statistics.error_materials,
 		statistics.cpu_levels, statistics.swapped_uploads, statistics.depth_renderbuffers);
 }
 
@@ -1780,6 +1782,117 @@ void es2_glShaderSource(GLuint shader, GLsizei count, const GLchar *const *strin
 	free(source);
 }
 
+/* ---------- the error material
+
+A shader that Piglet cannot compile or link would make the renderer skip
+its geometry (d3d8_gl.c deletes a shader that fails and draws nothing with
+it), so a translation gap would be invisible. Instead:
+
+- a fragment shader that fails to compile gets the error material's source
+  in the same shader object, so the renderer's program links and the
+  geometry is drawn in a magenta and black checkerboard;
+- a program that fails to link keeps its vertex shader and is linked again
+  with the error material's fragment shader.
+
+A vertex shader that fails cannot be placed on the screen: it is only
+logged, and the renderer skips its geometry. Every case is logged with
+Piglet's message. */
+
+static const char error_material_source[] =
+	"#version 100\n"
+	"precision mediump float;\n"
+	"void main()\n"
+	"{\n"
+	"\tfloat check = mod(floor(gl_FragCoord.x / 16.0) + floor(gl_FragCoord.y / 16.0), 2.0);\n"
+	"\tgl_FragColor = vec4(check, 0.0, check, 1.0);\n"
+	"}\n";
+
+static void log_shader_message(int level, GLuint shader, const char *what)
+{
+	char message[1024];
+
+	message[0] = 0;
+	hostreal_glGetShaderInfoLog(shader, sizeof(message), NULL, message);
+	host_logf(level, "gl: %s shader %u does not compile: %s", what, shader, message);
+}
+
+static GLuint error_material_shader(void)
+{
+	static GLuint shader;
+	static int failed;
+	const GLchar *source = error_material_source;
+	GLint status = 0;
+
+	if (shader || failed)
+		return shader;
+	shader = hostreal_glCreateShader(GL_FRAGMENT_SHADER);
+	hostreal_glShaderSource(shader, 1, &source, NULL);
+	hostreal_glCompileShader(shader);
+	hostreal_glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+	if (!status)
+	{
+		log_shader_message(HOST_LOG_ERROR, shader, "error material");
+		hostreal_glDeleteShader(shader);
+		shader = 0;
+		failed = 1;
+	}
+	return shader;
+}
+
+void es2_glCompileShader(GLuint shader)
+{
+	const GLchar *source = error_material_source;
+	GLint status = 0, type = 0;
+
+	hostreal_glCompileShader(shader);
+	hostreal_glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+	if (status)
+		return;
+	hostreal_glGetShaderiv(shader, GL_SHADER_TYPE, &type);
+	if (type != GL_FRAGMENT_SHADER)
+	{
+		log_shader_message(HOST_LOG_ERROR, shader, "vertex");
+		return;
+	}
+	log_shader_message(HOST_LOG_WARN, shader, "fragment");
+	host_logf(HOST_LOG_WARN, "gl: fragment shader %u is replaced by the error material", shader);
+	hostreal_glShaderSource(shader, 1, &source, NULL);
+	hostreal_glCompileShader(shader);
+	statistics.error_materials++;
+}
+
+static void link_with_error_material(GLuint program)
+{
+	GLuint shaders[8], error_shader;
+	GLsizei count = 0, index;
+	GLint status = 0, type = 0;
+	char message[1024];
+
+	message[0] = 0;
+	hostreal_glGetProgramInfoLog(program, sizeof(message), NULL, message);
+	host_logf(HOST_LOG_WARN, "gl: program %u does not link: %s", program, message);
+	error_shader = error_material_shader();
+	if (!error_shader)
+		return;
+	hostreal_glGetAttachedShaders(program, 8, &count, shaders);
+	for (index = 0; index < count; index++)
+	{
+		hostreal_glGetShaderiv(shaders[index], GL_SHADER_TYPE, &type);
+		if (type == GL_FRAGMENT_SHADER)
+			hostreal_glDetachShader(program, shaders[index]);
+	}
+	hostreal_glAttachShader(program, error_shader);
+	hostreal_glLinkProgram(program);
+	hostreal_glGetProgramiv(program, GL_LINK_STATUS, &status);
+	if (status)
+	{
+		statistics.error_materials++;
+		host_logf(HOST_LOG_WARN, "gl: program %u is drawn with the error material", program);
+	}
+	else
+		host_logf(HOST_LOG_ERROR, "gl: program %u does not link with the error material either", program);
+}
+
 void es2_glAttachShader(GLuint program, GLuint shader)
 {
 	struct shader_info *info = map_get(&es2.shaders, shader);
@@ -1818,7 +1931,10 @@ void es2_glLinkProgram(GLuint program)
 	statistics.links++;
 	hostreal_glGetProgramiv(program, GL_LINK_STATUS, &status);
 	if (!status)
+	{
 		statistics.link_failures++;
+		link_with_error_material(program);
+	}
 }
 
 void es2_glUseProgram(GLuint program)

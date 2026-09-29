@@ -444,8 +444,9 @@ static struct
 {
 	int handle;
 	int connected;
+	int open_error_logged;
 	uint64_t last_attempt;
-} pad = { -1, 0, 0 };
+} pad = { -1, 0, 0, 0 };
 
 static void pad_open(void)
 {
@@ -462,6 +463,12 @@ static void pad_open(void)
 	{
 		pad.handle = handle;
 		host_logf(HOST_LOG_INFO, "controller opened (handle %d)", handle);
+	}
+	else if (!pad.open_error_logged)
+	{
+		/* retried every PAD_RETRY_MICROSECONDS; logged once */
+		pad.open_error_logged = 1;
+		host_logf(HOST_LOG_WARN, "scePadOpen: 0x%08x (retrying)", (unsigned)handle);
 	}
 }
 

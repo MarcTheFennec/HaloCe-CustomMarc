@@ -39,7 +39,7 @@ EMULATED = {
     "glDeleteFramebuffers", "glBindFramebuffer", "glFramebufferTexture2D", "glCheckFramebufferStatus",
     "glVertexAttribPointer",
     "glDrawArrays", "glDrawElements",
-    "glShaderSource", "glAttachShader", "glLinkProgram", "glUseProgram",
+    "glShaderSource", "glCompileShader", "glAttachShader", "glLinkProgram", "glUseProgram",
     "glBindBuffer", "glDeleteBuffers", "glBufferData", "glBufferSubData",
     "glEnableVertexAttribArray", "glDisableVertexAttribArray",
 }

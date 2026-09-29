@@ -459,3 +459,68 @@ def generate_ps4_build(n: Writer, sln: Any) -> None:
             implicit=[libguestc, linker_script, Path("tools/ps4_image_check.py")])
     n.build(outputs="ps4_guest", rule="phony", inputs=[image, host_table_c, host_gl_c])
 
+    generate_ps4_host_builds(n, sln, host_table_c, host_gl_c, image)
+
+
+# ---------- the host
+
+# port/ps4/host sources that only one platform builds; everything else there
+# is shared by the console's eboot.bin and the headless Linux host
+HOST_PLATFORM_SOURCES = {"host_orbis.c", "host_platform_null.c"}
+
+
+def ps4_host_sources(platform_source: str) -> List[Path]:
+    shared = [path for path in sorted((PORT_DIR / "host").glob("*.c")) if path.name not in HOST_PLATFORM_SOURCES]
+    return shared + [PORT_DIR / "host" / platform_source, TOML_DIR / "tomlc17.c"]
+
+
+def ps4_host_cflags() -> List[str]:
+    return [
+        "-O2", "-g", "-Wall", "-Wno-unused-function", "-D_GNU_SOURCE",
+        f"-I{PORT_DIR}/host", f"-I{PORT_DIR}/include", f"-I{BUILD}/host_gen", f"-I{LINUX_DIR}/src",
+        f"-I{TOML_DIR}", f"-I{SDL_DIR}/include",
+        *[f"-I{path}" for path in khronos_include_dirs()],
+    ]
+
+
+def generate_ps4_host_builds(n: Writer, sln: Any, host_table_c: Path, host_gl_c: Path, image: Path) -> None:
+    """ninja ps4_host_linux: the host on x86-64 Linux with no display, sound or
+    controller (host_platform_null.c), running the same guest image as the
+    console, for testing the loader, system calls, threads and files."""
+    if not sys.platform.startswith("linux"):
+        return
+    host_cc = getattr(sln, "ps4_host_cc", None) or "clang"
+    obj_dir = BUILD / "host_linux"
+    headless = BUILD / "halo_ps4_headless"
+    n.comment("PS4 headless host (ninja ps4_host_linux): build/ps4/halo_ps4_headless build/ps4/halo_guest.elf")
+    n.variable("ps4_host_cc", host_cc)
+    n.rule(
+        name="ps4_host_cc",
+        command=f"{compile_launcher(sln)}$ps4_host_cc -MMD -MF $out.d $cflags -c $in -o $out",
+        description="PS4 HOST CC $out",
+        depfile="$out.d",
+        deps="gcc",
+    )
+    cflags = " ".join(ps4_host_cflags())
+    redirect = PORT_DIR / "host" / "host_fs_redirect.h"
+    generated = [host_table_c, host_gl_c]
+    objects = []
+    for source in ps4_host_sources("host_platform_null.c") + generated:
+        obj = obj_dir / (source.name + ".o")
+        n.build(outputs=obj, rule="ps4_host_cc", inputs=source, variables={"cflags": cflags},
+                order_only=generated)
+        objects.append(obj)
+    # the platform layer's file and socket helpers, with their paths sent
+    # through the content roots
+    for source in (LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c"):
+        obj = obj_dir / (source.name + ".o")
+        n.build(outputs=obj, rule="ps4_host_cc", inputs=source,
+                variables={"cflags": f"{cflags} -include {redirect}"}, implicit=[redirect])
+        objects.append(obj)
+    n.rule(
+        name="ps4_host_link",
+        command="$ps4_host_cc -static -o $out $in -lpthread",
+        description="PS4 HOST LINK $out",
+    )
+    n.build(outputs=headless, rule="ps4_host_link", inputs=objects)
+    n.build(outputs="ps4_host_linux", rule="phony", inputs=[headless, image])

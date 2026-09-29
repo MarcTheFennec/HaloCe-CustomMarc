@@ -131,6 +131,11 @@ parser.add_argument(
     type=str,
     help="clang with the x32 target for the PS4 guest (default: clang)",
 )
+parser.add_argument(
+    "--ps4-host-cc",
+    type=str,
+    help="C compiler for the PS4 port's headless Linux host, `ninja ps4_host_linux` (default: clang)",
+)
 if not is_windows():
     parser.add_argument(
         "--wrapper",
@@ -199,6 +204,7 @@ sln.android_ndk = args.android_ndk
 sln.android_guest_cc = args.android_guest_cc
 sln.ps4 = args.ps4
 sln.ps4_guest_cc = args.ps4_guest_cc
+sln.ps4_host_cc = args.ps4_host_cc
 if not is_windows():
     sln.wrapper = args.wrapper
 

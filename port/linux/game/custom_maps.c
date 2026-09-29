@@ -81,8 +81,11 @@ short custom_map_scan(void)
 {
 	struct file_reference directory;
 	static struct file_reference found_files[CUSTOM_MAP_MAXIMUM_COUNT + 32];
-	char filename[256];
-	char extension[64];
+	/* file_reference_get_name writes a MAXIMUM_FILENAME_LENGTH+1 byte field
+	   (strncpy pads the whole width, then the terminator): both buffers must
+	   be that wide or the pad smashes this frame and the return address */
+	char filename[MAXIMUM_FILENAME_LENGTH + 1];
+	char extension[MAXIMUM_FILENAME_LENGTH + 1];
 	long file_count;
 	long file_index;
 

@@ -4,6 +4,7 @@
 
     python tools/ci_build.py linux debug
     python tools/ci_build.py android release
+    python tools/ci_build.py ps4 release
 
 Builds are portable (any x86-64 processor), so they run on other
 computers. Debug builds skip link-time and profile-guided optimisation,
@@ -29,6 +30,7 @@ OUTPUTS = {
     "linux": ["build/linux/halo"],
     "windows": ["build/windows/halo.exe", "build/windows/SDL3.dll"],
     "android": [],  # the APK, below
+    "ps4": ["build/ps4/eboot.bin"],  # and the package, below
 }
 APKS = {
     "debug": "port/android/app/build/outputs/apk/debug/app-debug.apk",
@@ -70,6 +72,10 @@ def main() -> int:
         gradlew = "gradlew.bat" if os.name == "nt" else "./gradlew"
         run([gradlew, "--console=plain", "-q", f"assemble{args.config.capitalize()}"], cwd=ROOT / "port/android")
         outputs = [APKS[args.config]]
+    elif args.platform == "ps4":
+        # the host, then the package around it (needs OO_PS4_TOOLCHAIN)
+        run(["ninja", "ps4_pkg"])
+        outputs = OUTPUTS[args.platform] + [str(path.relative_to(ROOT)) for path in sorted((ROOT / "build/ps4/pkg").glob("*.pkg"))]
     else:
         run(["ninja", args.platform])
         outputs = OUTPUTS[args.platform]
@@ -81,7 +87,7 @@ def main() -> int:
     for output in outputs:
         shutil.copy2(ROOT / output, dist)
         print(f"{output} -> {dist.relative_to(ROOT)}", flush=True)
-    if args.platform != "android":
+    if args.platform not in ("android", "ps4"):
         # the desktop builds' disc image reader (port/linux/src/xiso.c)
         # follows extract-xiso, whose license asks binaries to carry its
         # notice

@@ -121,6 +121,26 @@ parser.add_argument(
     type=str,
     help="clang with the arm64_32 target for the Android guest (default: clang)",
 )
+parser.add_argument(
+    "--ps4-toolchain",
+    metavar="DIR",
+    help="OpenOrbis PS4 Toolchain for `ninja ps4` (default: OO_PS4_TOOLCHAIN)",
+)
+parser.add_argument(
+    "--ps4-cc",
+    type=str,
+    help="clang for the PS4 host (default: clang)",
+)
+parser.add_argument(
+    "--ps4-ld",
+    type=str,
+    help="ld.lld for the PS4 host (default: ld.lld)",
+)
+parser.add_argument(
+    "--ps4-log-address",
+    metavar="HOST:PORT",
+    help="PS4 host: also send the log to this UDP address (development builds)",
+)
 if not is_windows():
     parser.add_argument(
         "--wrapper",
@@ -187,6 +207,10 @@ sln.port_pgo = args.pgo
 sln.port_pgo_profile = args.pgo_profile
 sln.android_ndk = args.android_ndk
 sln.android_guest_cc = args.android_guest_cc
+sln.ps4_toolchain = args.ps4_toolchain
+sln.ps4_cc = args.ps4_cc
+sln.ps4_ld = args.ps4_ld
+sln.ps4_log_address = args.ps4_log_address
 if not is_windows():
     sln.wrapper = args.wrapper
 

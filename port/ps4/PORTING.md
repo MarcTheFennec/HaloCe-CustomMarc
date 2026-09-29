@@ -41,6 +41,13 @@ and `memory` lines (every `monitor.seconds`).
 3. **The Piglet shader compiler modules** from a 4.74 devkit firmware.
    The user must supply them (BUILDING-PS4.md). There is no public
    alternative for runtime GLSL compilation on retail firmware.
+4. **No OpenGL ES implementation on the build machine.** Mesa and ANGLE
+   could not be downloaded or built there. The Chromium SwiftShader
+   package on npm contains only stub libraries. So the GL ES 2 layer and
+   the error material compile but have not drawn a frame. The shaders
+   were checked with glslangValidator only. A Linux machine with Mesa
+   could run the test host with an EGL context; this is the next step
+   without a console.
 
 ## Design
 

@@ -37,6 +37,7 @@ from .semantic_progress import (
 )
 from .linux_build import generate_linux_build, linux_configure_inputs
 from .android_build import generate_android_build, android_configure_inputs
+from .ps4_build import generate_ps4_build, ps4_configure_inputs
 from .windows_build import generate_windows_build, windows_configure_inputs
 from .parked_functions import (
     ParkedFunctionsError,
@@ -275,6 +276,7 @@ def generate_native_build_ninja(sln: SolutionConfig) -> None:
 
     generate_linux_build(n, sln)
     generate_android_build(n, sln)
+    generate_ps4_build(n, sln)
     generate_windows_build(n, sln)
 
     n.comment("Reconfigure on change")
@@ -294,6 +296,7 @@ def generate_native_build_ninja(sln: SolutionConfig) -> None:
             python_lib_dir / "ninja_syntax.py",
             *linux_configure_inputs(),
             *android_configure_inputs(),
+            *ps4_configure_inputs(),
             *windows_configure_inputs(),
         ],
     )
@@ -640,6 +643,11 @@ def generate_build_ninja(sln: SolutionConfig) -> None:
     generate_android_build(n, sln)
 
     ###
+    # PS4 guest image (not part of the matching graph; see port/ps4/README.md)
+    ###
+    generate_ps4_build(n, sln)
+
+    ###
     # Windows build (not part of the matching graph; generated on Windows)
     ###
     generate_windows_build(n, sln)
@@ -664,6 +672,7 @@ def generate_build_ninja(sln: SolutionConfig) -> None:
             python_lib_dir / "ninja_syntax.py",
             *linux_configure_inputs(),
             *android_configure_inputs(),
+            *ps4_configure_inputs(),
             *windows_configure_inputs(),
         ],
     )

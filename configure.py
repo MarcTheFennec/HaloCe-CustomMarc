@@ -121,6 +121,16 @@ parser.add_argument(
     type=str,
     help="clang with the arm64_32 target for the Android guest (default: clang)",
 )
+parser.add_argument(
+    "--ps4",
+    action="store_true",
+    help="generate `ninja ps4_guest`, the PS4 port's guest image (see port/ps4/README.md)",
+)
+parser.add_argument(
+    "--ps4-guest-cc",
+    type=str,
+    help="clang with the x32 target for the PS4 guest (default: clang)",
+)
 if not is_windows():
     parser.add_argument(
         "--wrapper",
@@ -187,6 +197,8 @@ sln.port_pgo = args.pgo
 sln.port_pgo_profile = args.pgo_profile
 sln.android_ndk = args.android_ndk
 sln.android_guest_cc = args.android_guest_cc
+sln.ps4 = args.ps4
+sln.ps4_guest_cc = args.ps4_guest_cc
 if not is_windows():
     sln.wrapper = args.wrapper
 

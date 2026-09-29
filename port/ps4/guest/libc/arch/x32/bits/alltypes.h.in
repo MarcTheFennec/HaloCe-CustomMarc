@@ -1,0 +1,30 @@
+/* x32 (musl's arch/x32/bits/alltypes.h.in) for the PS4 guest, with the
+MSVC-compatible choices the Android guest makes too
+(port/android/guest/libc/arch/arm64_32/bits/alltypes.h.in): 16-bit wchar_t
+(-fshort-wchar) and 32-bit time_t, as in the runtime the game was written
+against (it keeps times in longs). The host's system call layer converts to
+its own 64-bit structures (port/ps4/host/host_syscall.c). */
+#define _Addr int
+#define _Int64 long long
+#define _Reg long long
+
+#define __BYTE_ORDER 1234
+#define __LONG_MAX 0x7fffffffL
+
+#ifndef __cplusplus
+TYPEDEF unsigned short wchar_t;
+#endif
+TYPEDEF unsigned wint_t;
+
+TYPEDEF long time_t;
+TYPEDEF long suseconds_t;
+
+#if defined(__FLT_EVAL_METHOD__) && __FLT_EVAL_METHOD__ == 2
+TYPEDEF long double float_t;
+TYPEDEF long double double_t;
+#else
+TYPEDEF float float_t;
+TYPEDEF double double_t;
+#endif
+
+TYPEDEF struct { long long __ll; long double __ld; } max_align_t;

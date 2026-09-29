@@ -29,8 +29,7 @@ On the PS4 every thread is limited to the six cores a game owns (mask
 #include <unistd.h>
 
 #if defined(__ORBIS__)
-#include <orbis/libkernel.h>
-int32_t scePthreadSetaffinity(OrbisPthread thread, uint64_t mask);
+#include <orbis/libkernel.h> /* scePthreadSetaffinity is declared without a prototype there */
 #endif
 
 #define GUARD_SIZE 0x10000

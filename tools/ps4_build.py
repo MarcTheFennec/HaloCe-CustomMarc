@@ -474,16 +474,122 @@ def ps4_host_sources(platform_source: str) -> List[Path]:
     return shared + [PORT_DIR / "host" / platform_source, TOML_DIR / "tomlc17.c"]
 
 
-def ps4_host_cflags() -> List[str]:
+def ps4_host_cflags(orbis: bool = False) -> List[str]:
+    # the console build takes EGL and KHR from the OpenOrbis headers (Piglet's
+    # EGLNativeWindowType); the GLES 3 headers always come from Khronos
+    khronos = [path for path in khronos_include_dirs() if not (orbis and "EGL-Registry" in str(path))]
     return [
         "-O2", "-g", "-Wall", "-Wno-unused-function", "-D_GNU_SOURCE",
         f"-I{PORT_DIR}/host", f"-I{PORT_DIR}/include", f"-I{BUILD}/host_gen", f"-I{LINUX_DIR}/src",
         f"-I{TOML_DIR}", f"-I{SDL_DIR}/include",
-        *[f"-I{path}" for path in khronos_include_dirs()],
+        *[f"-I{path}" for path in khronos],
     ]
 
 
+# system libraries eboot.bin imports (stubs from ps4libdoc, tools/ps4_stub_libs.py)
+EBOOT_LIBRARIES = ["libkernel", "libScePad", "libSceAudioOut", "libSceUserService", "libSceSystemService",
+                   "libSceNet"]
+# create-fself's program authentication ID and auth info for an application
+# that may use Piglet: the values of OpenOrbis' piglet sample
+# (samples/piglet/Makefile in OpenOrbis-PS4-Toolchain)
+EBOOT_PAID = "0x3800000000000035"
+EBOOT_AUTHINFO = ("000000000000000000000000001C004000FF000000000080000000000000000000000000000000000000008000"
+                  "400040000000000000008000000000000000080040FFFF000000F0000000000000000000000000000000000000"
+                  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
+
+
+def generate_ps4_eboot_build(n: Writer, sln: Any, host_table_c: Path, host_gl_c: Path, image: Path) -> None:
+    """ninja ps4_eboot: build/ps4/eboot.bin, the console's executable (the host
+    with the guest image embedded), linked with the OpenOrbis toolchain's
+    link.x against OpenOrbis musl and ps4libdoc stubs, then made a fake-signed
+    SELF by create-fself. The toolchain directory is laid out by
+    tools/ps4_setup_toolchain.sh (<dir>/src, <dir>/sysroot, <dir>/ps4libdoc)."""
+    oo = Path(getattr(sln, "ps4_openorbis", None) or os.environ.get("PS4_OPENORBIS", "/opt/oo"))
+    needed = [oo / "src" / "link.x", oo / "src" / "include" / "orbis", oo / "sysroot" / "lib" / "libc.a",
+              oo / "sysroot" / "lib" / "crt1.o", oo / "ps4libdoc"]
+    missing = [str(path) for path in needed if not path.exists()]
+    if missing:
+        n.comment(f"PS4 eboot.bin: disabled, OpenOrbis toolchain incomplete ({', '.join(missing)}); "
+                  "run tools/ps4_setup_toolchain.sh or pass --ps4-openorbis")
+        return
+    cc = getattr(sln, "ps4_guest_cc", None) or "clang"
+    ld = getattr(sln, "ps4_guest_ld", None) or "ld.lld"
+    obj_dir = BUILD / "host_orbis"
+    stub_dir = BUILD / "stubs"
+    elf = BUILD / "eboot.elf"
+    oelf = BUILD / "eboot.oelf"
+    eboot = BUILD / "eboot.bin"
+    n.comment(f"PS4 eboot.bin (ninja ps4_eboot), OpenOrbis toolchain in {oo}")
+    n.variable("ps4_orbis_cc", cc)
+    n.variable("ps4_orbis_ld", ld)
+
+    stubs = [stub_dir / f"{name}.so" for name in EBOOT_LIBRARIES]
+    n.rule(
+        name="ps4_stubs",
+        command=(f"$python tools/ps4_stub_libs.py --cc $ps4_orbis_cc --ld $ps4_orbis_ld {oo / 'ps4libdoc'} "
+                 f"{stub_dir} {' '.join(EBOOT_LIBRARIES)} > /dev/null"),
+        description="PS4 STUBS",
+    )
+    n.build(outputs=stubs, rule="ps4_stubs", implicit=[Path("tools/ps4_stub_libs.py")])
+
+    orbis_flags = [
+        "--target=x86_64-pc-freebsd12-elf", "-D__ORBIS__", "-D__PS4__", "-fPIC", "-funwind-tables",
+        "-nostdinc", f"-isystem {oo / 'sysroot' / 'include'}", f"-isystem {oo / 'src' / 'include'}",
+        "-isystem $$($ps4_orbis_cc --target=x86_64-pc-freebsd12-elf -print-resource-dir)/include",
+        # SDL's headers look for <sys/endian.h> on FreeBSD targets, which
+        # OpenOrbis musl lacks; the host only uses SDL's types
+        "-DSDL_BYTEORDER=1234",
+    ]
+    cflags = " ".join(orbis_flags + ps4_host_cflags(orbis=True))
+    n.rule(
+        name="ps4_orbis_cc",
+        command=f"{compile_launcher(sln)}$ps4_orbis_cc -MMD -MF $out.d $cflags -c $in -o $out",
+        description="PS4 EBOOT CC $out",
+        depfile="$out.d",
+        deps="gcc",
+    )
+    redirect = PORT_DIR / "host" / "host_fs_redirect.h"
+    generated = [host_table_c, host_gl_c]
+    objects = []
+    for source in ps4_host_sources("host_orbis.c") + generated:
+        obj = obj_dir / (source.name + ".o")
+        n.build(outputs=obj, rule="ps4_orbis_cc", inputs=source, variables={"cflags": cflags},
+                order_only=generated)
+        objects.append(obj)
+    for source in (LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c"):
+        obj = obj_dir / (source.name + ".o")
+        n.build(outputs=obj, rule="ps4_orbis_cc", inputs=source,
+                variables={"cflags": f"{cflags} -include {redirect}"}, implicit=[redirect])
+        objects.append(obj)
+    blob = obj_dir / "host_image_blob.o"
+    n.build(outputs=blob, rule="ps4_orbis_cc", inputs=PORT_DIR / "host" / "host_image_blob.S",
+            variables={"cflags": f"{' '.join(orbis_flags)} -DHALO_GUEST_IMAGE='\"{image}\"'"}, implicit=[image])
+    objects.append(blob)
+
+    libraries = " ".join("-l" + name[len("lib"):] for name in EBOOT_LIBRARIES)
+    n.rule(
+        name="ps4_eboot_link",
+        command=(f"$ps4_orbis_ld -m elf_x86_64 -pie --script {oo / 'src' / 'link.x'} --eh-frame-hdr -o $out $in "
+                 f"-L{stub_dir} -L{oo / 'sysroot' / 'lib'} -lc {libraries} {oo / 'sysroot' / 'lib' / 'crt1.o'}"),
+        description="PS4 EBOOT LINK $out",
+    )
+    n.build(outputs=elf, rule="ps4_eboot_link", inputs=objects, implicit=stubs)
+    n.rule(
+        name="ps4_fself",
+        command=(f"OO_PS4_TOOLCHAIN={oo / 'src'} create-fself -in=$in -out={oelf} --eboot $out "
+                 f"--paid {EBOOT_PAID} --authinfo {EBOOT_AUTHINFO} --library-path {stub_dir} > /dev/null"),
+        description="PS4 FSELF $out",
+    )
+    n.build(outputs=eboot, rule="ps4_fself", inputs=elf, implicit=stubs)
+    n.build(outputs="ps4_eboot", rule="phony", inputs=[eboot])
+
+
 def generate_ps4_host_builds(n: Writer, sln: Any, host_table_c: Path, host_gl_c: Path, image: Path) -> None:
+    generate_ps4_eboot_build(n, sln, host_table_c, host_gl_c, image)
+    generate_ps4_headless_build(n, sln, host_table_c, host_gl_c, image)
+
+
+def generate_ps4_headless_build(n: Writer, sln: Any, host_table_c: Path, host_gl_c: Path, image: Path) -> None:
     """ninja ps4_host_linux: the host on x86-64 Linux with no display, sound or
     controller (host_platform_null.c), running the same guest image as the
     console, for testing the loader, system calls, threads and files."""

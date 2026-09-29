@@ -132,6 +132,12 @@ parser.add_argument(
     help="clang with the x32 target for the PS4 guest (default: clang)",
 )
 parser.add_argument(
+    "--ps4-openorbis",
+    type=str,
+    help="OpenOrbis toolchain directory as tools/ps4_setup_toolchain.sh lays it out, for `ninja ps4_eboot` "
+    "(default: $PS4_OPENORBIS or /opt/oo)",
+)
+parser.add_argument(
     "--ps4-host-cc",
     type=str,
     help="C compiler for the PS4 port's headless Linux host, `ninja ps4_host_linux` (default: clang)",
@@ -205,6 +211,7 @@ sln.android_guest_cc = args.android_guest_cc
 sln.ps4 = args.ps4
 sln.ps4_guest_cc = args.ps4_guest_cc
 sln.ps4_host_cc = args.ps4_host_cc
+sln.ps4_openorbis = args.ps4_openorbis
 if not is_windows():
     sln.wrapper = args.wrapper
 

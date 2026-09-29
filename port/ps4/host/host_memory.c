@@ -60,6 +60,13 @@ of the log is written to crash.log.
 #include <ucontext.h>
 #endif
 
+#if defined(__ORBIS__)
+/* OpenOrbis musl's signal.h maps sa_sigaction to __sa_handler.sa_sigaction,
+but names the member __sa_sigaction */
+#undef sa_sigaction
+#define sa_sigaction __sa_handler.__sa_sigaction
+#endif
+
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS MAP_ANON
 #endif

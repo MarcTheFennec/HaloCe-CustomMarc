@@ -30,4 +30,9 @@ int host_fs_statvfs(const char *path, struct statvfs *st);
 #define utimensat(dirfd, path, times, flags) host_fs_utimensat((dirfd), (path), (times), (flags))
 #define statvfs(path, st) host_fs_statvfs((path), (st))
 
+#if defined(__ORBIS__) && !defined(FIONREAD)
+/* FreeBSD's _IOR('f', 127, int); OpenOrbis musl only has Linux's value */
+#define FIONREAD 0x4004667f
+#endif
+
 #endif

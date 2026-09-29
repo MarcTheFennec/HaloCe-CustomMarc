@@ -295,7 +295,7 @@ static unsigned short msvc_to_control_word(unsigned int value, unsigned short wo
 	return word;
 }
 
-#ifdef HALO_ANDROID
+#if defined(HALO_ANDROID) && !defined(HALO_PS4)
 /* AArch64: the rounding mode lives in FPCR.RMode, the sticky exception
 flags in FPSR. Precision control and exception unmasking have no
 equivalent; the rest of the MSVC control word is only remembered. */
@@ -366,6 +366,13 @@ unsigned int _control87(unsigned int new_value, unsigned int mask)
 	{
 		current = (current & ~mask) | (new_value & mask);
 		environment.__control_word = msvc_to_control_word(current, environment.__control_word);
+#ifdef HALO_PS4
+		/* x86-64 (the PS4 port's x32 guest): the game's arithmetic runs
+		on SSE, whose rounding control (MXCSR bits 13-14) musl's fesetenv
+		takes from the environment as it is; it has the x87 encoding */
+		environment.__mxcsr = (environment.__mxcsr & ~0x6000u) |
+			(((unsigned int)environment.__control_word >> 10 & 3) << 13);
+#endif
 		fesetenv(&environment);
 	}
 	return current;
@@ -382,7 +389,12 @@ unsigned int _statusfp(void)
 	fenv_t environment;
 
 	fegetenv(&environment);
+#ifdef HALO_PS4
+	/* SSE's exception flags (MXCSR bits 0-5) are in the same order */
+	return (environment.__status_word | environment.__mxcsr) & 0x3f;
+#else
 	return environment.__status_word & 0x3f;
+#endif
 }
 
 unsigned int _clearfp(void)
@@ -394,6 +406,10 @@ unsigned int _clearfp(void)
 	status = environment.__status_word & 0x3f;
 	/* the exception flags, and the summary and stack fault bits with them */
 	environment.__status_word &= (unsigned short)~0xff;
+#ifdef HALO_PS4
+	status |= environment.__mxcsr & 0x3f;
+	environment.__mxcsr &= ~0x3fu;
+#endif
 	fesetenv(&environment);
 	return status;
 }

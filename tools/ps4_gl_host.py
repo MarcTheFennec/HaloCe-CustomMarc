@@ -39,8 +39,9 @@ EMULATED = {
     "glDeleteFramebuffers", "glBindFramebuffer", "glFramebufferTexture2D", "glCheckFramebufferStatus",
     "glVertexAttribPointer",
     "glDrawArrays", "glDrawElements",
-    "glShaderSource", "glAttachShader", "glLinkProgram", "glUseProgram", "glDeleteProgram",
-    "glBindBuffer", "glDeleteBuffers",
+    "glShaderSource", "glAttachShader", "glLinkProgram", "glUseProgram",
+    "glBindBuffer", "glDeleteBuffers", "glBufferData", "glBufferSubData",
+    "glEnableVertexAttribArray", "glDisableVertexAttribArray",
 }
 
 # functions the guest reaches through host_gl_get_string rather than an import

@@ -16,7 +16,12 @@ guest wrapper that widens such arguments and calls an import named
 hostgl_<function>, which the host resolves to the real entry point. Functions
 returning a string go through host_gl_get_string instead.
 
-Usage: android_gl_stubs.py gl.h gl32.h gl2ext.h output.c imports.list
+Usage: android_gl_stubs.py [--integer-registers N] gl.h gl32.h gl2ext.h output.c imports.list
+
+The PS4 port (port/ps4) uses the same wrappers for its x32 guest, whose
+calling convention has six integer argument registers instead of AArch64's
+eight (--integer-registers 6); its host receives stack arguments in 8-byte
+slots as well.
 """
 
 import re
@@ -55,7 +60,12 @@ def split_parameter(param: str):
 
 
 def main():
-    gl_header, gl32, gl2ext, output, imports = sys.argv[1:6]
+    global INTEGER_REGISTER_COUNT
+    arguments = sys.argv[1:]
+    if arguments and arguments[0] == "--integer-registers":
+        INTEGER_REGISTER_COUNT = int(arguments[1])
+        arguments = arguments[2:]
+    gl_header, gl32, gl2ext, output, imports = arguments[:5]
     functions = android_functions(gl_header)
     protos = prototypes(gl32, gl2ext)
     out = [

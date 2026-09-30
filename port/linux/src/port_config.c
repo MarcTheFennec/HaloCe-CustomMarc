@@ -208,6 +208,54 @@ static const struct config_setting config_settings[] =
 	{ "debug.sample_seconds", _config_real, "0.0", "HALO_SAMPLE", _environment_value, _platform_android,
 		"Log where every game thread is this often, in seconds (read by the\n"
 		"app, port/android/host/host_debug.c); 0 never." },
+
+	/* The libsm64 module (port/libsm64_port). Every one of these does
+	   nothing unless the build was configured with --enable-libsm64; with it,
+	   they are read when the game starts, apart from sm64.scale, which takes
+	   effect the next time the module is started (sm64_enable 0, then 1). */
+	{ "sm64.enable", _config_boolean, "false", "HALO_SM64", _environment_value, _platform_desktop,
+		"Start the libsm64 module: it loads libsm64 and an SM64 US ROM, and\n"
+		"puts an actor in the level with sm64_spawn. Off leaves the game as it\n"
+		"was, and costs nothing." },
+	{ "sm64.rom", _config_string, "\"\"", "HALO_SM64_ROM", _environment_value, _platform_desktop,
+		"Where the Super Mario 64 US ROM is (baserom.us.z64), which libsm64\n"
+		"reads for Mario's textures and animations: supply your own copy, it is\n"
+		"not part of this project. Empty looks for baserom.us.z64 beside the\n"
+		"game, in the working directory and in the data folder." },
+	{ "sm64.library", _config_string, "\"\"", "HALO_SM64_LIBRARY", _environment_value, _platform_desktop,
+		"Where libsm64's shared library is; empty looks for libsm64.so (or\n"
+		"sm64.dll) beside the game, then in the usual places." },
+	{ "sm64.scale", _config_real, "0.01", "HALO_SM64_SCALE", _environment_value, _platform_desktop,
+		"Halo units per SM64 unit. 0.01 makes Mario 1.6 units tall, the same\n"
+		"as a standing player is wide, so he fits through Halo's doors." },
+	{ "sm64.tick_rate", _config_real, "30.0", "HALO_SM64_TICKS", _environment_value, _platform_desktop,
+		"Mario's steps a second; 30 is the game's own tick rate, and what\n"
+		"libsm64 expects." },
+	{ "sm64.deadzone", _config_real, "0.08", "HALO_SM64_DEADZONE", _environment_value, _platform_desktop,
+		"Movement below this is not sent to Mario, so that a resting stick\n"
+		"does not make him shuffle." },
+	{ "sm64.sensitivity", _config_real, "1.0", "HALO_SM64_SENSITIVITY", _environment_value, _platform_desktop,
+		"How far Mario turns for the movement the player asks for." },
+	{ "sm64.invert_y", _config_boolean, "false", "HALO_SM64_INVERT_Y", _environment_set_is_true, _platform_desktop,
+		"Moving backwards (or down) makes Mario move forwards (or up)." },
+	{ "sm64.collision_radius", _config_real, "40.0", "HALO_SM64_RADIUS", _environment_value, _platform_desktop,
+		"How much of the level around Mario becomes his collision, in Halo\n"
+		"units. Bigger means more of the level to walk on, and more work." },
+	{ "sm64.max_surfaces", _config_real, "4096.0", "HALO_SM64_SURFACES", _environment_value, _platform_desktop,
+		"The most surfaces of the level that become his collision at once;\n"
+		"libsm64 searches them one after another, so this is what bounds the\n"
+		"cost of a step." },
+	{ "sm64.debug", _config_boolean, "true", "HALO_SM64_DEBUG", _environment_value, _platform_desktop,
+		"Draw the actor: a capsule where he is, a line where he faces, and\n"
+		"what he is doing above him." },
+	{ "sm64.show_collision", _config_boolean, "false", "HALO_SM64_COLLISION", _environment_value, _platform_desktop,
+		"Draw the surfaces of the level he is standing on (sm64_debug too)." },
+	{ "sm64.draw_mesh", _config_boolean, "false", "HALO_SM64_MESH", _environment_value, _platform_desktop,
+		"Draw Mario himself from libsm64's geometry buffers (not finished: the\n"
+		"module fills its buffers, but nothing draws them yet)." },
+	{ "sm64.possess_player", _config_boolean, "false", "HALO_SM64_POSSESS", _environment_value, _platform_desktop,
+		"Move the player's own unit to where Mario is, instead of only drawing\n"
+		"him: the camera stays with the player, who rides along." },
 };
 
 #define NUMBER_OF_CONFIG_SETTINGS (sizeof(config_settings) / sizeof(config_settings[0]))

@@ -1,0 +1,9 @@
+# What the test Makefile builds. Sources, the Makefile and libsm64.h (the copy
+# of the vendored header the ABI test compares against) are committed; nothing
+# here is.
+/test_sm64_port
+/test_abi
+/libsm64_test_double.so
+*.o
+*.d
+*.so

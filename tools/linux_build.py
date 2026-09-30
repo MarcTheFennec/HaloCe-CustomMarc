@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from . import libsm64_build
 from .ninja_syntax import Writer
 
 PORT_DIR = Path("port/linux")
@@ -328,6 +329,10 @@ def generate_linux_build(n: Writer, sln: Any) -> None:
     )
 
     abi = " ".join(LINUX_ABI_FLAGS + [march_flag(sln)] + (["-DHALO_RELEASE"] if getattr(sln, "port_release", False) else []))
+    if libsm64_build.enabled(sln):
+        # every unit, not just the module's own: main.c and console.c call it
+        # behind #ifdef HALO_CE_ENABLE_LIBSM64
+        abi += " -DHALO_CE_ENABLE_LIBSM64=1"
     port_include = PORT_DIR / "include"
     sdk_flags = f"-idirafter {XDK_INCLUDE}"
     excluded = set(config.get("exclude_sources", []))
@@ -431,6 +436,9 @@ def generate_linux_build(n: Writer, sln: Any) -> None:
         for source in musl_math_sources():
             add_object(source, musl_math_cflags(abi))
 
+        # the module's units, and (as an order-only input: it is opened at run
+        # time, not linked) the library it opens
+        objects += module_objects
         n.build(
             outputs=output,
             rule="linux_link",
@@ -440,7 +448,29 @@ def generate_linux_build(n: Writer, sln: Any) -> None:
                 "libs": libs,
             },
             implicit=[Path("tools/linux_link_check.py")],
+            order_only=[module_library] if module_library else [],
         )
+
+    # The libsm64 module (port/libsm64_port), when this configuration was made
+    # with configure.py --enable-libsm64: its units, compiled with the game's
+    # own flags and include path, and the shared library it opens at run time.
+    # Both are built once, outside emit(), so that the profile-guided build's
+    # second pass links the same objects rather than naming them twice.
+    module_objects: List[Path] = []
+    module_library: Optional[Path] = None
+    if libsm64_build.enabled(sln):
+        module_objects = libsm64_build.add_module(
+            n, sln, build_dir / "libsm64_port", "linux_cc", abi,
+            f"-include {prefix_header} -include {semantics_header}",
+            # port_config.h, the settings file's reader
+            [f"-I{Path(config['platform_sources'])}", f"-I{port_include}"],
+            # the generated MSVC-semantics header and the XDK declarations,
+            # which every unit that sees the game's headers depends on
+            [*xdk_headers(), prefix_header, semantics_header])
+        # beside the executable: the module looks for the library there
+        module_library = libsm64_build.emit_library(
+            n, build_dir / "libsm64.so", cc, libsm64_build.library_cflags("linux"),
+            libsm64_build.library_ldflags("linux"))
 
     # Profile-guided optimisation: with the committed profile, or with
     # --pgo=train one that an instrumented build records while playing

@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional
 from .linux_build import (LINUX_PROFILE, OPTIMISATION, WINDOWS_PROFILE, XDK_INCLUDE, lto_mode, march_flag, pgo_mode,
                           compile_launcher, musl_math_cflags, musl_math_sources, pgo_profile, profile_use_flags,
                           xdk_headers)
+from . import libsm64_build
 from .ninja_syntax import Writer
 
 LINUX_DIR = Path("port/linux")
@@ -288,6 +289,10 @@ def generate_windows_build(n: Writer, sln: Any) -> None:
     )
 
     abi = " ".join(WINDOWS_ABI_FLAGS + [march_flag(sln)] + (["-DHALO_RELEASE"] if getattr(sln, "port_release", False) else []))
+    if libsm64_build.enabled(sln):
+        # every unit, not just the module's own: main.c and console.c call it
+        # behind #ifdef HALO_CE_ENABLE_LIBSM64
+        abi += " -DHALO_CE_ENABLE_LIBSM64=1"
     sdl_include = SDL_DIR / "include"
     excluded = set(linux_config.get("exclude_sources", []))
     libs = " ".join(
@@ -404,9 +409,30 @@ def generate_windows_build(n: Writer, sln: Any) -> None:
         n.build(
             outputs=output,
             rule="windows_link",
-            inputs=objects + extra_objects,
+            inputs=objects + extra_objects + module_objects,
             variables={"ldflags": " ".join(base_ldflags + extra_ldflags), "libs": libs},
+            # the libsm64 module's library: opened at run time, not linked
+            order_only=module_library,
         )
+
+    # The libsm64 module (port/libsm64_port), when this configuration was made
+    # with configure.py --enable-libsm64: its units, compiled with the game's
+    # own flags, and the library it opens at run time. Built once, outside
+    # emit(), so that the profile-guided build's second pass links the same
+    # objects rather than naming them twice.
+    module_objects: List[Path] = []
+    module_library: List[Path] = []
+    if libsm64_build.enabled(sln):
+        module_objects = libsm64_build.add_module(
+            n, sln, BUILD / "libsm64_port", "windows_cc", abi,
+            f"-include {prefix_header}",
+            # port_config.h (the settings) and the XDK's declarations
+            [f"-I{linux_platform}", f"-I{PORT_DIR / 'include'}", f"-I{XDK_INCLUDE}"],
+            [*xdk_headers(), prefix_header, tags_header])
+        # beside the executable: the module looks for the library there
+        module_library = [libsm64_build.emit_library(n, BUILD / "sm64.dll", cc,
+                                                     libsm64_build.library_cflags("windows"),
+                                                     libsm64_build.library_ldflags("windows"))]
 
     # Profile-guided optimisation: with the committed Windows profile (or
     # the Linux one, which matches most of the game), or with --pgo=train

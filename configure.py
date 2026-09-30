@@ -112,6 +112,13 @@ parser.add_argument(
     help="native ports: profile-guided optimisation from this profile instead",
 )
 parser.add_argument(
+    "--enable-libsm64",
+    action="store_true",
+    help="build the libsm64 module (port/libsm64_port), off by default: it builds and loads "
+    "libsm64 from port/third_party/libsm64, and Mario only appears when sm64.enable is also "
+    "set in config.toml",
+)
+parser.add_argument(
     "--android-ndk",
     type=str,
     help="Android NDK for `ninja android` (default: ANDROID_NDK_HOME, or the newest under the Android SDK)",
@@ -179,6 +186,7 @@ sln.csplit_path = args.csplit
 sln.ninja_path = args.ninja
 sln.ml_path = args.ml
 sln.linux_cc = args.linux_cc
+sln.enable_libsm64 = args.enable_libsm64
 sln.compiler_launcher = args.compiler_launcher
 sln.port_release = args.release
 sln.port_lto = args.lto

@@ -5,6 +5,12 @@
     python tools/ci_build.py linux debug
     python tools/ci_build.py android release
 
+--enable-libsm64 builds the libsm64 module in too (port/libsm64_port), with
+the library it opens (build/linux/libsm64.so, build/windows/sm64.dll) beside
+the executable. It is off at run time all the same, until config.toml asks
+for it or the player presses F3; Android has no dynamic loader, and is
+refused.
+
 Builds are portable (any x86-64 processor), so they run on other
 computers. Debug builds skip link-time and profile-guided optimisation,
 which only make the build slower; release builds use both, as a local
@@ -45,7 +51,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("platform", choices=sorted(OUTPUTS))
     parser.add_argument("config", choices=["debug", "release"])
+    parser.add_argument("--enable-libsm64", action="store_true",
+                        help="build the libsm64 module in, and libsm64 with it")
     args = parser.parse_args()
+
+    if args.enable_libsm64 and args.platform == "android":
+        print("libsm64: the Android guest has no dynamic loader, so the module is not "
+              "built for it (port/libsm64_port/DECISIONS.md)", flush=True)
+        return 1
 
     configure = [sys.executable, "configure.py", "--portable"]
     if args.config == "release":
@@ -55,6 +68,8 @@ def main() -> int:
     launcher = os.environ.get("CI_COMPILER_LAUNCHER")
     if launcher:
         configure += ["--compiler-launcher", launcher]
+    if args.enable_libsm64:
+        configure.append("--enable-libsm64")
     # a build of main knows its number, which names its release (build-<n>),
     # for the self-updater (port/linux/src/updater.c, and the Android app);
     # other builds have none, and never look for updates
@@ -90,6 +105,17 @@ def main() -> int:
         # the self-updater's TLS (port/third_party/mbedtls), whose Apache
         # license asks the same
         shutil.copy2(ROOT / "port/third_party/mbedtls/LICENSE", dist / "mbedtls-LICENSE.txt")
+    if args.enable_libsm64:
+        # the library the module opens, and libsm64's licence. Mario's textures
+        # and animations come from the player's own ROM, which no build ships.
+        library = ROOT / ("build/windows/sm64.dll" if args.platform == "windows"
+                          else "build/linux/libsm64.so")
+        if library.is_file():
+            shutil.copy2(library, dist)
+            print(f"{library.relative_to(ROOT)} -> {dist.relative_to(ROOT)}", flush=True)
+        else:
+            print(f"warning: {library.relative_to(ROOT)} was not built", flush=True)
+        shutil.copy2(ROOT / "port/third_party/libsm64/LICENSE.md", dist / "libsm64-LICENSE.md")
     return 0
 
 

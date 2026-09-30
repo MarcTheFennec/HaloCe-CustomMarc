@@ -43,3 +43,9 @@ original/
 
 # CI build outputs (tools/ci_build.py)
 dist/
+
+# libsm64 (port/third_party/libsm64): Mario's geometry, which its own build
+# generates from Nintendo's game and which this repository must not hold
+port/third_party/libsm64/src/decomp/mario/
+port/third_party/libsm64/build/
+port/third_party/libsm64/dist/

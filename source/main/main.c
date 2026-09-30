@@ -658,6 +658,14 @@ typedef char screenshot_and_framerate_globals_size_assert[
 void network_test_update(boolean main_menu_loaded, real seconds);
 #endif
 
+#ifdef HALO_CE_ENABLE_LIBSM64
+/* the libsm64 module (port/libsm64_port), which the build only contains when
+   it was configured with --enable-libsm64 */
+void sm64_port_halo_initialize(void);
+void sm64_port_halo_dispose(void);
+void sm64_port_halo_update(real seconds_elapsed);
+#endif
+
 /* ---------- prototypes */
 
 static long sort_desired_local_player_controllers(
@@ -3107,6 +3115,12 @@ void main_loop(
 	main_setup_connection();
 	main_initialize_time();
 
+#ifdef HALO_CE_ENABLE_LIBSM64
+	/* the libsm64 module: off unless config.toml asks for it, and harmless
+	   when libsm64 or a ROM is missing (port/libsm64_port) */
+	sm64_port_halo_initialize();
+#endif
+
 	while (TRUE)
 	{
 		if (!game_in_editor())
@@ -3125,6 +3139,15 @@ void main_loop(
 			{
 				main_won_map_private();
 			}
+
+#ifdef HALO_CE_ENABLE_LIBSM64
+			/* the map is being left or reloaded: its actors stand on
+			   geometry that is about to go with it */
+			if (main_globals.lost_map || main_globals.reset_map)
+			{
+				sm64_port_halo_dispose();
+			}
+#endif
 
 			if (main_globals.respawn)
 			{
@@ -3245,6 +3268,12 @@ void main_loop(
 			main_update_time();
 			process_ui_widgets();
 			bink_playback_update();
+
+#ifdef HALO_CE_ENABLE_LIBSM64
+			/* the libsm64 module: a frame of Mario in the game's own time,
+			   in a level or at the main menu (port/libsm64_port) */
+			sm64_port_halo_update((real)main_globals.halt_time_scale*main_globals.seconds_elapsed);
+#endif
 
 			if ((!game_in_editor() && (input_key_is_down(_key_end) || input_key_is_down(_key_escape))) || editor_should_exit())
 			{

@@ -207,6 +207,11 @@ void console_warning(
 	return;
 }
 
+#ifdef HALO_CE_ENABLE_LIBSM64
+/* the libsm64 module's own commands, "sm64_..." (port/libsm64_port) */
+boolean sm64_port_halo_console_command(const char *command);
+#endif
+
 static boolean console_process_command(
 	const char *command)
 {
@@ -220,6 +225,14 @@ static boolean console_process_command(
 
 	console_globals.previous_command_count = MIN(console_globals.previous_command_count + 1, MAXIMUM_NUMBER_OF_PREVIOUS_COMMANDS);
 	console_globals.selected_previous_command_index = NONE;
+
+#ifdef HALO_CE_ENABLE_LIBSM64
+	/* the module's commands are not HaloScript: it takes them first */
+	if (sm64_port_halo_console_command(command))
+	{
+		return TRUE;
+	}
+#endif
 
 	return hs_compile_and_evaluate(command);
 }
